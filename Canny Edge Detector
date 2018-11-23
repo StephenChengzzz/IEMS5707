@@ -1,0 +1,246 @@
+I = imread("f.jpg", "JPG"); % Specify the name of image file
+HTH = 0.35; % Specify the high threshold
+LTH = 0.2; % Specify the low threshold
+
+% Description of the outputs:
+%
+% "0 gray.png"                      - grayscale image
+% "0+ gray_gau.png"                 - gaussian blur of the grayscale image
+% "1 sobelx.png"                    - horizontal edges
+% "2 sobely.png"                    - vertical edges
+% "3 AB.png"                        - spuare root of sobelx and sobely
+% "4 thin_edge.png"                 - result of non-maximum suppression
+% "5 thresholding.png"              - two-way thresholding
+% "6 hysteresis_thresholding.png"   - hysteresis thresholding
+% "7 color.png"                     - angle indication
+
+s = size(I);
+I = im2double(I);
+
+gf = [2,4,5,4,2; 4,9,12,9,4; 5,12,15,12,5; 4,9,12,9,4; 2,4,5,4,2];
+gf = gf/159;
+egdt = [-1,-1,-1; -1,9,-1; -1,-1,-1];
+sobelx = [1,0,-1; 2,0,-2; 1,0,-1];
+sobely = [1,2,1; 0,0,0; -1,-2,-1];
+
+% grayscale
+for i=1:s(1)
+  for j=1:s(2)
+    Igray(i,j) = I(i,j,1)*0.299 + I(i,j,2)*0.587 + I(i,j,3)*0.114;
+  end
+end
+imwrite(Igray, "0 gray.png");
+
+% gaussian filter
+Igray=conv2(Igray,gf,'same');
+imwrite(Igray, "0+ gray_gau.png")
+
+% gradient
+A = conv2(Igray,sobelx,'same');
+B = conv2(Igray,sobely,'same');
+
+imwrite(A, "1 sobelx.png");
+imwrite(B, "2 sobely.png");
+
+Aangle = A;
+Bangle = B;
+
+% sobel square root
+for i=1:s(1)
+  for j=1:s(2)
+   AB(i,j)=(A(i,j)^2+B(i,j)^2)^0.5;
+  endfor
+endfor
+
+AB_back = AB;
+imwrite(AB_back, "3 AB.png");
+
+% atan
+for i=1:s(1)
+  for j=1:s(2)
+    ag(i,j) = atan2(Bangle(i,j),Aangle(i,j));
+  endfor
+endfor
+
+% 0_horizontal 1_right-up 2_vertical 3_left-up
+% ag_map
+for i=1:s(1)
+  for j=1:s(2)
+    
+    if ag(i,j)<=0.392699 && ag(i,j)>-0.392699 % -22.5~22.5
+      ag_map(i,j) = 0;
+    endif
+    
+    if ag(i,j)<=1.178097 && ag(i,j)>0.392699 % 22.5~67.5
+      ag_map(i,j) = 1;
+    endif
+    
+    if ag(i,j)<=1.963495 && ag(i,j)>1.178097 % 67.5~112.5
+      ag_map(i,j) = 2;
+    endif
+
+    if ag(i,j)<=2.748894 && ag(i,j)>1.963495 % 112.5~157.5
+      ag_map(i,j) = 3;
+    endif    
+
+    if ag(i,j)<=-0.392699 && ag(i,j)>-1.178097 % -22.5~-67.5
+      ag_map(i,j) = 3;
+    endif
+    
+    if ag(i,j)<=-1.178097 && ag(i,j)>-1.963495 % -67.5~-112.5
+      ag_map(i,j) = 2;
+    endif
+    
+    if ag(i,j)<=-1.963495 && ag(i,j)>-2.748894 % -112.5~-157.5
+      ag_map(i,j) = 1;
+    endif
+
+    if ag(i,j)<-2.748894 || ag(i,j)>2.748894 % 157.5~180 or -157.5~-180
+      ag_map(i,j) = 0;
+    endif    
+    
+  endfor
+endfor
+
+AB_back = imread("3 AB.png", "PNG");
+AB_back = im2double(AB_back);
+
+AB = AB_back;
+
+% thin the edge
+for i=2:s(1)-1
+  for j=2:s(2)-1
+    if ag_map(i,j)==0
+      comp = [AB_back(i,j-1),AB_back(i,j),AB_back(i,j+1)];
+      maxi = max(comp);
+      if AB_back(i,j)==maxi && maxi>0.15
+        AB(i,j)=AB(i,j);
+      else
+        AB(i,j)=0;
+      endif
+    endif
+    
+    if ag_map(i,j)==1
+      comp = [AB_back(i-1,j-1),AB_back(i,j),AB_back(i+1,j+1)];
+      maxi = max(comp);
+      if AB_back(i,j)==maxi && maxi>0.15
+        AB(i,j)=AB(i,j);
+      else
+        AB(i,j)=0;
+      endif
+    endif
+    
+    if ag_map(i,j)==2
+      comp = [AB_back(i-1,j),AB_back(i,j),AB_back(i+1,j)];
+      maxi = max(comp);
+      if AB_back(i,j)==maxi && maxi>0.15
+        AB(i,j)=AB(i,j);
+      else
+        AB(i,j)=0;
+      endif
+    endif
+    
+    if ag_map(i,j)==3
+      comp = [AB_back(i+1,j-1),AB_back(i,j),AB_back(i-1,j+1)];
+      maxi = max(comp);
+      if AB_back(i,j)==maxi && maxi>0.15
+        AB(i,j)=AB(i,j);
+      else
+        AB(i,j)=0;
+      endif
+    endif    
+  endfor
+endfor
+
+for i=1:s(1)
+  AB(i,1)=AB_back(i,1);
+  AB(i,s(2))=AB_back(i,s(2));
+endfor
+
+for j=1:s(2)
+  AB(1,j)=AB_back(1,j);
+  AB(s(1),j)=AB_back(s(1),j);
+endfor
+
+imwrite(AB, "4 thin_edge.png");
+
+AB = imread("4 thin_edge.png", "PNG");
+AB = im2double(AB);
+
+for i=1:s(1)
+  for j=1:s(2)
+    if AB(i,j)<LTH
+      AB(i,j)=0;
+    endif
+    if AB(i,j)>HTH
+      AB(i,j)=1;
+    endif
+  endfor
+endfor
+
+AB_back = AB;
+
+imwrite(AB, "5 thresholding.png");
+
+for i=2:s(1)-1
+  for j=2:s(2)-1
+    if AB(i,j)<=HTH && AB(i,j)>LTH
+      if AB(i-1,j)==1 || AB(i+1,j)==1 || AB(i,j-1)==1 || AB(i,j+1)==1
+        AB(i,j)=1;
+      elseif AB(i-1,j-1)==1 || AB(i-1,j+1)==1 || AB(i+1,j-1)==1 || AB(i+1,j+1)==1
+        AB(i,j)=1;
+      else
+        AB(i,j)=0;
+      endif
+    endif
+  endfor
+endfor
+
+imwrite(AB, "6 hysteresis_thresholding.png");
+
+n = 64;
+colormap(hsv(n));
+cmap = colormap;
+pcolor([1:n+1;1:n+1]);
+divi = 2*pi/n;
+
+countp = 1;
+countz = 1;
+countm = 1;
+
+for i=1:s(1)
+  for j=1:s(2)
+    if AB(i,j)>0.9
+      if ag(i,j) > 0
+        countp = countp + 1;
+        step1 = floor(ag(i,j)/divi);
+        step = n/2 + step1;
+        D(i,j,1) = cmap(step,1);
+        D(i,j,2) = cmap(step,2);
+        D(i,j,3) = cmap(step,3);
+      elseif ag(i,j) == 0
+        countz = countz + 1;
+        D(i,j,1) = cmap(n/2,1);
+        D(i,j,2) = cmap(n/2,2);
+        D(i,j,3) = cmap(n/2,3);
+      elseif ag(i,j) < 0
+        countm = countm + 1;
+        step1 = ceil(ag(i,j)/divi);
+        step = n/2 - abs(step1) + 1;
+        D(i,j,1) = cmap(step,1);
+        D(i,j,2) = cmap(step,2);
+        D(i,j,3) = cmap(step,3);
+      endif
+    else 
+      D(i,j,1) = 0;
+      D(i,j,2) = 0;
+      D(i,j,3) = 0;
+    endif
+  endfor
+endfor
+
+countp
+countz
+countm
+
+imwrite(D, "7 color.png");
